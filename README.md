@@ -1,36 +1,32 @@
-# Multilingual Turn Completion Detection
+# Turn Completion Detection Assignment (3 hours)
 
-## Objective
-Build a language-agnostic system that can accurately detect when a speaker has completed their turn, distinguishing between natural pauses and actual turn completions across multiple languages.
+## Background
+Current Voice Activity Detection (VAD) systems often use simple power thresholds to detect speech endpoints. However, this can lead to premature cutoffs during natural pauses or hesitations in speech.
 
-## Base Requirements
-1. System must:
-   - Process real-time audio streams
-   - Detect turn completions with lower latency than basic VAD
-   - Work across provided languages without language-specific rules
-   - Handle natural pauses without premature cutoff
+## Task
+Improve upon a basic VAD system to distinguish between:
+- Natural turn completions (where the speaker is done)
+- Mid-utterance pauses (where the speaker will continue)
 
-2. Implementation must include:
-   - Feature extraction pipeline
-   - Turn completion detection algorithm
-   - Performance metrics and analysis
-   - Documentation of approach
+## Provided Materials
+1. Basic VAD implementation using power thresholds
+2. Four test audio clips:
+   - english_normal.wav: Continuous English speech
+   - korean_normal.wav: Continuous Korean speech  
+   - english_pause.wav: English with "um" and mid-sentence pause
+   - korean_pause.wav: Korean with mid-sentence pause
 
-3. Analysis of:
-   - False positive/negative rates
-   - Latency measurements
-   - Cross-language performance comparison
-   - Failure cases and potential improvements
+## Requirements
+1. Build upon the provided VAD code to handle:
+   - Mid-sentence pauses
+   - Filler words ("um", Korean equivalents)
+   - Language-agnostic features
+   
+2. Your solution should:
+   - Process audio in near real-time
+   - Work for both English and Korean samples
+   - Include comments explaining your approach
 
-## Stretch Goals
-- Handle code-switching scenarios
-- Adaptive threshold learning
-- Real-time performance optimization
-- Additional language support
-
-## Evaluation Criteria
-- Code quality and organization
-- Algorithm design and justification
-- Performance across languages
-- Analysis depth and insights
-- Documentation clarity
+3. Evaluation metrics:
+   - False cutoffs (cutting speaker off mid-sentence)
+   - Latency (how long after true completion we detect it)
