@@ -77,10 +77,10 @@ class State(ABC):
 class Ended(State):
     def detect(self, audio_chunk):
         if self.turn_detector.records[-1] == RecordState.WORD:
-            print("STATE CHANGED FROM ENDED TO SPEAKING")
+            # print("STATE CHANGED FROM ENDED TO SPEAKING")
             self.turn_detector.change_state(Speaking(self.turn_detector))
             return True
-        print("ENDED")
+        # print("ENDED")
         return False
 
 class Speaking(State):
@@ -90,15 +90,14 @@ class Speaking(State):
     def detect(self, audio_chunk):
         # use records array instead of calling it here directly
         if self.silenced():
-            print(self.turn_detector.records)
             if self.turn_detector.records[-10] == RecordState.FILLER:
-                print("STATE CHANGED FROM SPEAKING TO PAUSED")
+                # print("STATE CHANGED FROM SPEAKING TO PAUSED")
                 self.turn_detector.change_state(Paused(self.turn_detector))
                 return True
-            print("STATE CHANGED FROM SPEAKING TO ENDED")
+            # print("STATE CHANGED FROM SPEAKING TO ENDED")
             self.turn_detector.change_state(Ended(self.turn_detector)) # TODO: might need to reset ema
             return False
-        print("SPEAKING")
+        # print("SPEAKING")
         return True
 
 class Paused(State):
@@ -107,11 +106,11 @@ class Paused(State):
 
     def detect(self, audio_chunk):
         if self.silenced() and self.turn_detector.records[-25] == RecordState.FILLER:
-            print("STATE CHANGED FROM PAUSED TO ENDED")
+            # print("STATE CHANGED FROM PAUSED TO ENDED")
             self.turn_detector.change_state(Ended(self.turn_detector))
             return False
         if self.turn_detector.records[-1] == RecordState.WORD:
-            print("STATE CHANGED FROM PAUSED TO SPEAKING")
+            # print("STATE CHANGED FROM PAUSED TO SPEAKING")
             self.turn_detector.change_state(Speaking(self.turn_detector))
         return True
 
@@ -190,7 +189,7 @@ class TurnDetector:
         # nanmean over mean because librosa returns a lot of NaN
         return np.nanmean(f0)
     
-    def detect_filler(self, leniency=10, window_size=5): # 7 is good for all except korean_paused
+    def detect_filler(self, leniency=7, window_size=5): # 7 is good for all except korean_paused
         first = self.pitches[-window_size]
         mean = np.nanmean(list(self.pitches)[-window_size:])
         last = self.pitches[-1]
@@ -232,7 +231,7 @@ class TurnDetector:
 def main():
     """Example usage"""
     # Load and process a test file
-    audio, sr = sf.read('../data/korean_pause.wav')
+    audio, sr = sf.read('../data/english_normal.wav')
 
     detector = TurnDetector(reference_std=0.000246, alpha=0.005, threshold=0.0001, sampling_rate=sr)
     
@@ -254,8 +253,8 @@ def main():
         if len(chunk) == chunk_size:
             # plots.append(chunk)
             # pitches.append(extract_pitch(chunk))
-            prediction.append(detector.detect_turn_completion(chunk))
-            # print(f"Time {i/sr:.2f}s: Turn complete? {detector.detect_turn_completion(chunk)}")
+            # prediction.append(detector.detect_turn_completion(chunk))
+            print(f"Time {i/sr:.2f}s: Turn complete? {not detector.detect_turn_completion(chunk)}")
 
     # print(f"Number of Samples: {len(plots)}")
     # print(transcription())
@@ -263,7 +262,7 @@ def main():
     # plot_signal(prediction)
     # plot_signal(pitches)
     # plot_signal(detect_pause(pitches))
-    plot_signal([rec.value for rec in detector.records])
+    # plot_signal([rec.value for rec in detector.records])
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
