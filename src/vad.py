@@ -75,7 +75,7 @@ class State(ABC):
         pass
 
 class Ended(State):
-    def detect(self, audio_chunk):
+    def detect(self):
         if self.turn_detector.records[-1] == RecordState.WORD:
             # print("STATE CHANGED FROM ENDED TO SPEAKING")
             self.turn_detector.change_state(Speaking(self.turn_detector))
@@ -87,8 +87,7 @@ class Speaking(State):
     def silenced(self):
         return all(list(map(lambda x: x == RecordState.NOISE, list(self.turn_detector.records)[-9:])))
 
-    def detect(self, audio_chunk):
-        # use records array instead of calling it here directly
+    def detect(self):
         if self.silenced():
             if self.turn_detector.records[-10] == RecordState.FILLER:
                 # print("STATE CHANGED FROM SPEAKING TO PAUSED")
@@ -104,7 +103,7 @@ class Paused(State):
     def silenced(self):
         return all(list(map(lambda x: x == RecordState.NOISE, list(self.turn_detector.records)[-24:])))
 
-    def detect(self, audio_chunk):
+    def detect(self):
         if self.silenced() and self.turn_detector.records[-25] == RecordState.FILLER:
             # print("STATE CHANGED FROM PAUSED TO ENDED")
             self.turn_detector.change_state(Ended(self.turn_detector))
@@ -180,7 +179,7 @@ class TurnDetector:
         # run exponential moving average on it
         if abs(ema_std - self.ema_std) > self.threshold:
             self.last_ema_std = self.ema_std
-            self.ema_std = ema_std  # Optional: Adapt reference dynamically
+            self.ema_std = ema_std  # TODO: Adapt reference dynamically based on gender, age, etc.
             return True
         return False
 
@@ -220,13 +219,9 @@ class TurnDetector:
             bool: True if turn is complete, False otherwise
         """
         # Your implementation here
-        # Consider:
-        # - Mid-sentence pauses
-        # - Filler words
-        # - Language-agnostic features
         self.update_pitches(audio_chunk)
         self.update_records(audio_chunk)
-        return self.state.detect(audio_chunk)
+        return self.state.detect()
 
 def main():
     """Example usage"""
@@ -234,14 +229,6 @@ def main():
     audio, sr = sf.read('../data/english_normal.wav')
 
     detector = TurnDetector(reference_std=0.000246, alpha=0.005, threshold=0.0001, sampling_rate=sr)
-    
-    # use state-of-the-art to establish baseline
-    # baseline = calculate_baseline(audio, sr)
-    # plot_signal(baseline)
-
-    # TODO: need to implement the state transition
-    # TODO: need a lookahead buffer to catch first few samples before ema picks up
-    # TODO: once conv has ended, it might need to reset the self.ema_std
 
     # Process audio in chunks
     chunk_size = int(sr * 0.1)
@@ -251,20 +238,7 @@ def main():
     for i in range(0, len(audio), chunk_size):
         chunk = audio[i:i + chunk_size]
         if len(chunk) == chunk_size:
-            # plots.append(chunk)
-            # pitches.append(extract_pitch(chunk))
-            # prediction.append(detector.detect_turn_completion(chunk))
             print(f"Time {i/sr:.2f}s: Turn complete? {not detector.detect_turn_completion(chunk)}")
 
-    # print(f"Number of Samples: {len(plots)}")
-    # print(transcription())
-    # plot_signal(plots)
-    # plot_signal(prediction)
-    # plot_signal(pitches)
-    # plot_signal(detect_pause(pitches))
-    # plot_signal([rec.value for rec in detector.records])
-
 if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
     main()
