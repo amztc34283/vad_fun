@@ -1,5 +1,7 @@
 from scipy import signal
 from collections import deque
+from abc import ABC, abstractmethod
+from enum import Enum
 import matplotlib.pyplot as plt
 import webrtcvad
 import numpy as np
@@ -31,12 +33,6 @@ def transcription(file):
     )
     return transcription.text
 
-# def extract_pitch(chunk):
-#     import librosa
-#     f0, voiced_flag, _ = librosa.pyin(chunk, fmin=50, fmax=300)
-#     # nanmean over mean because librosa returns a lot of NaN
-#     return np.nanmean(f0)
-
 # convert float to int16 for PCM format
 def float_to_int16(chunk):
     chunk = np.clip(chunk, -1.0, 1.0)
@@ -66,7 +62,11 @@ def calculate_baseline(audio, sr):
             result.append(vad.is_speech(chunk, sr))
     return result
 
-from abc import ABC, abstractmethod
+class RecordState(Enum):
+    FILLER=1
+    WORD=2
+    NOISE=3
+
 class State(ABC):
     def __init__(self, turn_detector):
         self.turn_detector = turn_detector
@@ -76,20 +76,43 @@ class State(ABC):
 
 class Ended(State):
     def detect(self, audio_chunk):
-        if self.turn_detector.ema(audio_chunk):
+        if self.turn_detector.records[-1] == RecordState.WORD:
+            print("STATE CHANGED FROM ENDED TO SPEAKING")
             self.turn_detector.change_state(Speaking(self.turn_detector))
             return True
+        print("ENDED")
         return False
 
 class Speaking(State):
+    def silenced(self):
+        return all(list(map(lambda x: x == RecordState.NOISE, list(self.turn_detector.records)[-9:])))
+
     def detect(self, audio_chunk):
-        if self.turn_detector.detect_filler():
-            self.turn_detector.change_state(Paused(self.turn_detector))
-            return True
-        return False
+        # use records array instead of calling it here directly
+        if self.silenced():
+            print(self.turn_detector.records)
+            if self.turn_detector.records[-10] == RecordState.FILLER:
+                print("STATE CHANGED FROM SPEAKING TO PAUSED")
+                self.turn_detector.change_state(Paused(self.turn_detector))
+                return True
+            print("STATE CHANGED FROM SPEAKING TO ENDED")
+            self.turn_detector.change_state(Ended(self.turn_detector)) # TODO: might need to reset ema
+            return False
+        print("SPEAKING")
+        return True
 
 class Paused(State):
+    def silenced(self):
+        return all(list(map(lambda x: x == RecordState.NOISE, list(self.turn_detector.records)[-24:])))
+
     def detect(self, audio_chunk):
+        if self.silenced() and self.turn_detector.records[-25] == RecordState.FILLER:
+            print("STATE CHANGED FROM PAUSED TO ENDED")
+            self.turn_detector.change_state(Ended(self.turn_detector))
+            return False
+        if self.turn_detector.records[-1] == RecordState.WORD:
+            print("STATE CHANGED FROM PAUSED TO SPEAKING")
+            self.turn_detector.change_state(Speaking(self.turn_detector))
         return True
 
 class TurnDetector:
@@ -111,14 +134,20 @@ class TurnDetector:
         self.alpha = alpha
         self.sampling_rate = sampling_rate
         self.state = Ended(self)
-        # hold previous 10 samples' pitches = 1 second
-        self.pitches = deque([np.nan] * 10, maxlen=10)
-        # hold previous 10 samples' states from ema calculation
-        # each state is either "SPEECH" or "NOISE" (true or false)
-        self.states = deque([], maxlen=10)
+        self.pitches = deque([np.nan] * 10, maxlen=10)  # hold previous 10 samples' pitches = 1 second
+        self.records = deque([]) # hold previous 20 samples' states: word, filler, noise
+        # TODO: put noise inside incase running into errors; don't put it there for debugging to match time
 
-    def update_pitch(self, pitch):
-        self.pitches.append(pitch)
+    def update_pitches(self, audio_chunk):
+        self.pitches.append(self.extract_pitch(audio_chunk))
+
+    def update_records(self, audio_chunk):
+        if self.detect_filler():
+            self.records.append(RecordState.FILLER)
+        elif self.ema(audio_chunk):
+            self.records.append(RecordState.WORD)
+        else:
+            self.records.append(RecordState.NOISE)
         
     def basic_vad(self, audio_chunk, power_threshold=0.1):
         """
@@ -161,7 +190,7 @@ class TurnDetector:
         # nanmean over mean because librosa returns a lot of NaN
         return np.nanmean(f0)
     
-    def detect_filler(self, leniency=5, window_size=5):
+    def detect_filler(self, leniency=10, window_size=5): # 7 is good for all except korean_paused
         first = self.pitches[-window_size]
         mean = np.nanmean(list(self.pitches)[-window_size:])
         last = self.pitches[-1]
@@ -196,16 +225,14 @@ class TurnDetector:
         # - Mid-sentence pauses
         # - Filler words
         # - Language-agnostic features
-        # self.states.append(self.ema(audio_chunk))
-        pitch = self.extract_pitch(audio_chunk)
-        self.update_pitch(pitch)
-
+        self.update_pitches(audio_chunk)
+        self.update_records(audio_chunk)
         return self.state.detect(audio_chunk)
 
 def main():
     """Example usage"""
     # Load and process a test file
-    audio, sr = sf.read('../data/english_normal.wav')
+    audio, sr = sf.read('../data/korean_pause.wav')
 
     detector = TurnDetector(reference_std=0.000246, alpha=0.005, threshold=0.0001, sampling_rate=sr)
     
@@ -228,14 +255,15 @@ def main():
             # plots.append(chunk)
             # pitches.append(extract_pitch(chunk))
             prediction.append(detector.detect_turn_completion(chunk))
-            # print(f"Time {i/sr:.2f}s: Turn complete? {is_complete}")
+            # print(f"Time {i/sr:.2f}s: Turn complete? {detector.detect_turn_completion(chunk)}")
 
     # print(f"Number of Samples: {len(plots)}")
     # print(transcription())
     # plot_signal(plots)
-    plot_signal(prediction)
+    # plot_signal(prediction)
     # plot_signal(pitches)
     # plot_signal(detect_pause(pitches))
+    plot_signal([rec.value for rec in detector.records])
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
