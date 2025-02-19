@@ -23,16 +23,6 @@ def plot_signal(plots):
     plt.ylabel("Amplitude")
     plt.show()
 
-def transcription(file):
-    from openai import OpenAI
-    client = OpenAI()
-    audio_file= open(file, "rb")
-    transcription = client.audio.translations.create(
-        model="whisper-1",
-        file=audio_file
-    )
-    return transcription.text
-
 # convert float to int16 for PCM format
 def float_to_int16(chunk):
     chunk = np.clip(chunk, -1.0, 1.0)
@@ -63,6 +53,9 @@ def calculate_baseline(audio, sr):
     return result
 
 class RecordState(Enum):
+    """
+    States of a chunk of audio
+    """
     FILLER=1
     WORD=2
     NOISE=3
@@ -133,13 +126,20 @@ class TurnDetector:
         self.sampling_rate = sampling_rate
         self.state = Ended(self)
         self.pitches = deque([np.nan] * 10, maxlen=10)  # hold previous 10 samples' pitches = 1 second
-        self.records = deque([]) # hold previous 20 samples' states: word, filler, noise
-        # TODO: put noise inside incase running into errors; don't put it there for debugging to match time
+        self.records = deque([RecordState.NOISE] * 25, maxlen=25) # hold previous 25 samples' states: word, filler, noise
+        # DEBUG: put noise inside incase running into errors; don't put it there for debugging to match time
 
     def update_pitches(self, audio_chunk):
         self.pitches.append(self.extract_pitch(audio_chunk))
 
     def update_records(self, audio_chunk):
+        """
+        Update the records based on the audio chunk
+
+        Args:
+            audio_chunk: numpy array of audio samples
+
+        """
         if self.detect_filler():
             self.records.append(RecordState.FILLER)
         elif self.ema(audio_chunk):
@@ -170,7 +170,7 @@ class TurnDetector:
             audio_chunk: numpy array of audio samples
 
         Returns:
-            bool: True if the EMA std deviation exceeds the threshold, False otherwise
+            bool: True if the EMA std deviation exceeds the threshold (speech detected), False otherwise (noise detected)
         """
         filtered = self.filter_audio(audio_chunk)
         std = np.std(filtered)
@@ -189,6 +189,16 @@ class TurnDetector:
         return np.nanmean(f0)
     
     def detect_filler(self, leniency=7, window_size=5): # 7 is good for all except korean_paused
+        """
+        Detect if the chunk is a filler
+        
+        Args:
+            leniency: int, the leniency threshold
+            window_size: int, the window size
+            
+        Returns:
+            bool, True if the chunk is a filler, False otherwise
+        """
         first = self.pitches[-window_size]
         mean = np.nanmean(list(self.pitches)[-window_size:])
         last = self.pitches[-1]
@@ -213,7 +223,6 @@ class TurnDetector:
         
         Args:
             audio_chunk: numpy array of audio samples
-            sampling_rate: int, the sampling rate of the audio chunk
             
         Returns:
             bool: True if turn is complete, False otherwise
@@ -226,7 +235,7 @@ class TurnDetector:
 def main():
     """Example usage"""
     # Load and process a test file
-    audio, sr = sf.read('../data/english_normal.wav')
+    audio, sr = sf.read('../data/english_pause.wav')
 
     detector = TurnDetector(reference_std=0.000246, alpha=0.005, threshold=0.0001, sampling_rate=sr)
 
