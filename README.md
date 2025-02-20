@@ -1,92 +1,24 @@
-# Turn Completion Detection Challenge (3 hours)
+My approach/strategy
+I first did a lot of research on VAD in general and created a new algorithm (exponential moving average) to detect speech or noise. I also used the “state-of-the-art” VAD algorithm (webrtcvad) to compare my result with them making sure my algorithm is on-par. Then I started to work on the real task, detecting pause vs ended speech, by analyzing the data to extract useful insights. I tried a lot of things and ended up using the pitch to detect filler words so I could flag the system for potential pause if a filler word was within the window of interest. By reusing my algorithm, I could already detect filler words, speech, and noise, and they are basically all we need. Nonetheless, this information will be stored in a queue for further processing.
 
-## Background
-Voice Activity Detection (VAD) systems often cut off speakers mid-sentence because they rely on simple audio power thresholds (i.e. how high the signal is). Your task is to make a smarter system that can tell the difference between someone who's done talking versus just pausing to think.
+Key features/decisions used
+There are 3 states defined in the Moore Machine of the system: ENDED, SPEAKING, PAUSED. The initial state is always at ENDED. The most difficult part of the logic is at SPEAKING state determining if the speech has ended or paused. Since we have kept information about each chunk of the past, we were able to use them to our advantage.
 
-## Task
-Improve upon the basic VAD system to:
-1. Detect true turn completions vs mid-sentence pauses
-2. Work across multiple languages (English and Korean)
-3. Process audio in near real-time
+ENDED:
+If speech is detected, then we transition to SPEAKING 
 
-## Provided Materials
-1. Starter code with basic VAD implementation
-2. Test audio files:
-   - `english_normal.wav`: Continuous English speech
-   - `korean_normal.wav`: Continuous Korean speech  
-   - `english_pause.wav`: English with "um" and mid-sentence pause
-   - `korean_pause.wav`: Korean with mid-sentence pause
+SPEAKING:
+If there were no speech or filler words for some time X, then we transition to ENDED.
+If there were a filler word at some Y time before and had been silenced for some time Z, then we transition to PAUSED.
 
-## Setup
-1. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+PAUSED:
+If speech is detected, then we transition to SPEAKING.
+If no speech is detected for some time W, then we transition to ENDED.
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+Challenges faced
+I had to perform a lot of different analyses on the data to make sure I could figure out an angle of attack to each sub-problem. In addition, there are some parameters I had to tune in order to make it work such as time, window size, leniency for detecting filler words, etc. but they were also the fun of the projects. Last but not least, there were bugs like all programs in the world but I was able to fix them.
 
-## Requirements
-Your solution should:
-1. Implement `detect_turn_completion()` in `src/vad.py` to:
-   - Handle mid-sentence pauses without cutting off
-   - Detect filler words ("um", etc.)
-   - Work for both English and Korean
-   - Process audio chunks in near real-time
+Possible improvements with more time
+I think the solution can run in real-time already as all calculations are very fast and can be done within a short amount of time; however, I might consider running streaming on the pitch finding library to extract the last bit of performance. In general, I think this problem is well-suited to using deep learning because of the huge varieties of languages in the world. However, you might run into some performance problems. Eventually, I want to make it more robust, maybe using facial expression, demographic information to dynamically adjust the parameters of the system.
 
-2. Consider:
-   - What features beyond power help distinguish pauses vs completions?
-   - How to track speaker state over time?
-   - What makes a turn feel "complete" vs "paused"?
-   - How to make this language-independent?
 
-## Evaluation
-Your solution will be evaluated on:
-1. Technical Implementation:
-   - Accuracy in detecting turns vs pauses
-   - Language independence
-   - Real-time processing capability
-
-2. Code Quality:
-   - Clear organization
-   - Good documentation
-   - Error handling
-
-## Outside Resources
-You are free to use any resources, including LLMs, papers, Stack Overflow as you wish. Please do this project alone without the help of another live human.
-
-## Tips & Hints
-
-* **Audio Features to Consider:**
-  * Beyond simple power/energy, think about how pitch and rhythm change when someone is:
-    * Finishing a thought
-    * Pausing to think
-    * Using filler words
-  * What features might be universal across languages?
-
-* **State Management:**
-  * Consider keeping a short history of previous chunks
-  * Think about different states a speaker might be in (speaking, paused, finished)
-  * How long should a pause be before it's likely a turn completion?
-
-* **Real-world Considerations:**
-  * The system needs to make decisions quickly
-  * You can't look too far ahead in the audio
-  * False positives (cutting someone off) are worse than false negatives (waiting too long)
-
-* **Testing Tips:**
-  * Start with the normal files to get basic turn detection working
-  * Use the pause files to test handling of hesitations
-  * Compare behavior across languages to ensure language independence
-
-## Submission
-Provide:
-1. Your completed code implementation
-2. Brief write-up (1-2 paragraphs) explaining:
-   - Your approach/strategy
-   - Key features/decisions used
-   - Challenges faced
-   - Possible improvements with more time
